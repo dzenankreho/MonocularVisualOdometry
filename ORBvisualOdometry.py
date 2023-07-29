@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 import os
 
 
-orb = cv.ORB_create(4000)
+orb = cv.ORB_create(2000)
 bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
 
 FLANN_INDEX_LSH = 6
@@ -41,56 +41,104 @@ def getGroundTruthFromFile(filename):
 
 
 def detectComputeAndMatchORB(image1, image2):
-    # imageHeight = np.shape(image1)[0]
-    # imageWidth = np.shape(image1)[1]
-    #
-    # image11 = image1[0:int(imageHeight/2), 0:int(imageWidth/2)]
-    # image21 = image2[0:int(imageHeight/2), 0:int(imageWidth/2)]
-    # image12 = image1[0:int(imageHeight/2), int(imageWidth/2)+1:imageWidth-1]
-    # image22 = image2[0:int(imageHeight/2), int(imageWidth/2)+1:imageWidth-1]
-    # image13 = image1[int(imageHeight/2)+1:imageHeight-1, 0:int(imageWidth/2)]
-    # image23 = image2[int(imageHeight/2)+1:imageHeight-1, 0:int(imageWidth/2)]
-    # image14 = image1[int(imageHeight/2)+1:imageHeight-1, int(imageWidth/2)+1:imageWidth-1]
-    # image24 = image2[int(imageHeight/2)+1:imageHeight-1, int(imageWidth/2)+1:imageWidth-1]
-    #
-    # keypoints1 = []
-    # keypoints2 = []
-    # descriptors1 = []
-    # descriptors2 = []
+    imageHeight = np.shape(image1)[0]
+    imageWidth = np.shape(image1)[1]
 
-    keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
+    image11 = image1[0:int(imageHeight/2), 0:int(imageWidth/2)]
+    image21 = image2[0:int(imageHeight/2), 0:int(imageWidth/2)]
+    image12 = image1[0:int(imageHeight/2), int(imageWidth/2):imageWidth]
+    image22 = image2[0:int(imageHeight/2), int(imageWidth/2):imageWidth]
+    image13 = image1[int(imageHeight/2):imageHeight, 0:int(imageWidth/2)]
+    image23 = image2[int(imageHeight/2):imageHeight, 0:int(imageWidth/2)]
+    image14 = image1[int(imageHeight/2):imageHeight, int(imageWidth/2):imageWidth]
+    image24 = image2[int(imageHeight/2):imageHeight, int(imageWidth/2):imageWidth]
 
-    # for images in [(image11, image21), (image12, image22), (image13, image23), (image14, image24)]:
-    #     kp1, des1 = orb.detectAndCompute(images[0], None)
-    #     kp2, des2 = orb.detectAndCompute(images[1], None)
-    #     keypoints1.extend(kp1)
-    #     keypoints2.extend(kp2)
-    #     descriptors1.extend(des1)
-    #     descriptors2.extend(des2)
-    #
-    # keypoints1 = np.array(keypoints1)
-    # keypoints2 = np.array(keypoints2)
-    # descriptors1 = np.array(descriptors1)
-    # descriptors2 = np.array(descriptors2)
-
-
-    matches = bf.match(descriptors1, descriptors2)
-    # matches = bf.knnMatch(descriptors1, descriptors2, 2)
-    # matches = flann.match(descriptors1, descriptors2)
-    matches = sorted(matches, key=lambda x: x.distance)
 
     matchedKeypoints1 = []
     matchedKeypoints2 = []
 
-    for match in matches:
-        (x1, y1) = keypoints1[match.queryIdx].pt
-        (x2, y2) = keypoints2[match.trainIdx].pt
 
-        matchedKeypoints1.append((x1, y1))
-        matchedKeypoints2.append((x2, y2))
+    for cnt, images in enumerate([(image11, image21), (image12, image22), (image13, image23), (image14, image24)]):
+        keypoints1, descriptors1 = orb.detectAndCompute(images[0], None)
+        keypoints2, descriptors2 = orb.detectAndCompute(images[1], None)
+
+        matches = bf.match(descriptors1, descriptors2)
+        matches = sorted(matches, key=lambda x: x.distance)
+
+        for match in matches:
+            (x1, y1) = keypoints1[match.queryIdx].pt
+            (x2, y2) = keypoints2[match.trainIdx].pt
+
+            if cnt == 1:
+                x1 += int(imageWidth / 2)
+                x2 += int(imageWidth / 2)
+            elif cnt == 2:
+                y1 += int(imageHeight / 2)
+                y2 += int(imageHeight / 2)
+            elif cnt == 3:
+                x1 += int(imageWidth / 2)
+                x2 += int(imageWidth / 2)
+                y1 += int(imageHeight / 2)
+                y2 += int(imageHeight / 2)
+
+
+            matchedKeypoints1.append((x1, y1))
+            matchedKeypoints2.append((x2, y2))
+
 
     return np.array(matchedKeypoints1), np.array(matchedKeypoints2)
+
+# def detectComputeAndMatchORB(image1, image2):
+#     # imageHeight = np.shape(image1)[0]
+#     # imageWidth = np.shape(image1)[1]
+#     #
+#     # image11 = image1[0:int(imageHeight/2), 0:int(imageWidth/2)]
+#     # image21 = image2[0:int(imageHeight/2), 0:int(imageWidth/2)]
+#     # image12 = image1[0:int(imageHeight/2), int(imageWidth/2)+1:imageWidth-1]
+#     # image22 = image2[0:int(imageHeight/2), int(imageWidth/2)+1:imageWidth-1]
+#     # image13 = image1[int(imageHeight/2)+1:imageHeight-1, 0:int(imageWidth/2)]
+#     # image23 = image2[int(imageHeight/2)+1:imageHeight-1, 0:int(imageWidth/2)]
+#     # image14 = image1[int(imageHeight/2)+1:imageHeight-1, int(imageWidth/2)+1:imageWidth-1]
+#     # image24 = image2[int(imageHeight/2)+1:imageHeight-1, int(imageWidth/2)+1:imageWidth-1]
+#     #
+#     # keypoints1 = []
+#     # keypoints2 = []
+#     # descriptors1 = []
+#     # descriptors2 = []
+#
+#     keypoints1, descriptors1 = orb.detectAndCompute(image1, None)
+#     keypoints2, descriptors2 = orb.detectAndCompute(image2, None)
+#
+#     # for images in [(image11, image21), (image12, image22), (image13, image23), (image14, image24)]:
+#     #     kp1, des1 = orb.detectAndCompute(images[0], None)
+#     #     kp2, des2 = orb.detectAndCompute(images[1], None)
+#     #     keypoints1.extend(kp1)
+#     #     keypoints2.extend(kp2)
+#     #     descriptors1.extend(des1)
+#     #     descriptors2.extend(des2)
+#     #
+#     # keypoints1 = np.array(keypoints1)
+#     # keypoints2 = np.array(keypoints2)
+#     # descriptors1 = np.array(descriptors1)
+#     # descriptors2 = np.array(descriptors2)
+#
+#
+#     matches = bf.match(descriptors1, descriptors2)
+#     # matches = bf.knnMatch(descriptors1, descriptors2, 2)
+#     # matches = flann.match(descriptors1, descriptors2)
+#     matches = sorted(matches, key=lambda x: x.distance)
+#
+#     matchedKeypoints1 = []
+#     matchedKeypoints2 = []
+#
+#     for match in matches:
+#         (x1, y1) = keypoints1[match.queryIdx].pt
+#         (x2, y2) = keypoints2[match.trainIdx].pt
+#
+#         matchedKeypoints1.append((x1, y1))
+#         matchedKeypoints2.append((x2, y2))
+#
+#     return np.array(matchedKeypoints1), np.array(matchedKeypoints2)
 
 
 def runVO():
@@ -138,19 +186,20 @@ def runVO():
         _, R, t, mask2 = cv.recoverPose(E, matchedKeypoints1, matchedKeypoints2, K, mask=mask1)
         t = t * scale[cnt2]
 
-
-        pts3D = cv.triangulatePoints(K @ estimatedPoses[-1][0:3, :],
-                                     K @ np.hstack((R, t)),
-                                     np.transpose(matchedKeypoints1),
-                                     np.transpose(matchedKeypoints2))
-
-        pts3D = np.transpose(pts3D)
-        pts3D[:, 0] /= pts3D[:, 3]
-        pts3D[:, 1] /= pts3D[:, 3]
-        pts3D[:, 2] /= pts3D[:, 3]
-        pts3D[:, 3] /= pts3D[:, 3]
-        pts3D = pts3D[:, 0:3]
-        points3D.append(pts3D)
+        #
+        # pts3D = cv.triangulatePoints(K @ estimatedPoses[-1][0:3, :],
+        #                              K @ np.hstack((R, t)),
+        #                              np.transpose(matchedKeypoints1),
+        #                              np.transpose(matchedKeypoints2))
+        #
+        # pts3D = np.transpose(pts3D)
+        # pts3D[:, 0] /= pts3D[:, 3]
+        # pts3D[:, 1] /= pts3D[:, 3]
+        # pts3D[:, 2] /= pts3D[:, 3]
+        # pts3D[:, 3] /= pts3D[:, 3]
+        # pts3D = pts3D[:, 0:3]
+        # points3D.append(pts3D)
+        #
 
         # if cnt > 0:
         #     machedKeypointIntersections = np.array(list(set((tuple(i) for i in machedKeypoints[-2][1]))
