@@ -53,3 +53,12 @@ class KITTISequenceLoader:
 
     def getAllGroundTruthPoses(self):
         return np.array([self.getGroundTruthPose(i) for i in range(self.numberOfFrames)])
+
+
+    def playSequence(self):
+        for i in range(self.numberOfFrames):
+            cv.imshow("KITTI sequence", self.getFrame(i))
+            key = cv.waitKey(2)
+            if key == 27:
+                cv.destroyAllWindows()
+                break
