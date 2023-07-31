@@ -1,9 +1,9 @@
 import numpy as np
 import cv2 as cv
 from matplotlib import pyplot as plt
-from drawnow import drawnow, figure
-import os
+
 from KITTI_SequenceLoader import KITTISequenceLoader
+from KITTI_Plotter import KITTIPlotter
 
 loader = KITTISequenceLoader("KITTI00")
 
@@ -49,8 +49,8 @@ def detectComputeAndMatchORB(image1, image2):
 
     imagesVec = []
     imageShift = []
-    subimageWidthRatio = 1
-    subimageHeightRatio = 1
+    subimageWidthRatio = 2
+    subimageHeightRatio = 2
     for i in range(subimageHeightRatio):
         for j in range(subimageWidthRatio):
             imageShift.append((int(i*imageHeight/subimageHeightRatio),
@@ -155,19 +155,25 @@ def runVO():
     cnt2 = 0
 
     groundTruthPoses = loader.getAllGroundTruthPoses()
-    plt.figure()
-    plt.pause(0.2)
-    plt.subplot(2, 1, 1)
-    plt.plot(groundTruthPoses[:, 0, 3], groundTruthPoses[:, 2, 3], 'r',
-             np.array(estimatedPoses)[:, 0, 3], np.array(estimatedPoses)[:, 2, 3], 'b')
-    plt.subplot(2, 1, 2)
-    plt.imshow(loader.getFrame(0), cmap='gray')
-    plt.show(block=False)
-    plt.pause(0.2)
 
+    prevFrameCnt = 500
+    currFrameCnt = prevFrameCnt + 1
 
-    prevFrameCnt = 0
-    currFrameCnt = 1
+    estimatedPoses[0] = groundTruthPoses[prevFrameCnt]
+
+    plotter = KITTIPlotter(groundTruthPoses, estimatedPoses)
+    plotter.setupPlot()
+    # plt.figure()
+    # plt.pause(0.1)
+    # plt.subplot(2, 1, 1)
+    # plt.plot(groundTruthPoses[:, 0, 3], groundTruthPoses[:, 2, 3], 'r',
+    #          np.array(estimatedPoses)[:, 0, 3], np.array(estimatedPoses)[:, 2, 3], 'b')
+    # plt.subplot(2, 1, 2)
+    # plt.imshow(loader.getFrame(prevFrameCnt), cmap='gray')
+    # plt.show(block=False)
+    # plt.pause(0.1)
+
+    firstIter = True
     while True:
         # if cnt == 1000:
         #     break
@@ -187,6 +193,9 @@ def runVO():
         matchedKeypoints1, matchedKeypoints2 = detectComputeAndMatchORB(image1, image2)
         machedKeypoints.append((matchedKeypoints1, matchedKeypoints2))
 
+        if firstIter:
+            plotter.updatePlot(image1, matchedKeypoints1)
+            firstIter = False
 
         # lk_params = dict(winSize=(15, 15),
         #                  maxLevel=2,
@@ -207,12 +216,10 @@ def runVO():
 
         E, mask1 = cv.findEssentialMat(matchedKeypoints1, matchedKeypoints2, K, threshold=1, method=cv.RANSAC)
         _, R, t, mask2 = cv.recoverPose(E, matchedKeypoints1, matchedKeypoints2, K, mask=mask1)
-        tmp = loader.getGroundTruthScale(prevFrameCnt, currFrameCnt)
-        if tmp < 0.2:
-            currFrameCnt += 1
-            continue
-        t = t * tmp
-        print(tmp)
+        groundTruthScale = loader.getGroundTruthScale(prevFrameCnt, currFrameCnt)
+        t = t * groundTruthScale
+
+        # print(tmp)
         #
         # pts3D = cv.triangulatePoints(K @ estimatedPoses[-1][0:3, :],
         #                              K @ np.hstack((R, t)),
@@ -299,24 +306,28 @@ def runVO():
         #
         #     break
 
-        estimatedPoses.append(estimatedPoses[-1]
-                              @ np.linalg.inv(np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))))
+        if groundTruthScale < 0.1:
+            estimatedPoses.append(estimatedPoses[-1])
+            currFrameCnt += 1
+        else:
+            estimatedPoses.append(estimatedPoses[-1]
+                                  @ np.linalg.inv(np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))))
+            prevFrameCnt = currFrameCnt
+            currFrameCnt += 1
 
-        plt.clf()
-        plt.subplot(2, 1, 1)
-        plt.plot(groundTruthPoses[:, 0, 3], groundTruthPoses[:, 2, 3], 'r',
-                 np.array(estimatedPoses)[:, 0, 3], np.array(estimatedPoses)[:, 2, 3], 'b')
-        plt.subplot(2, 1, 2)
-        plt.imshow(image2, cmap='gray')
-        plt.show(block=False)
-        plt.pause(0.2)
-        # if estimatedPoses[-1][2, 3] > 135:
-        #     print(np.shape(matchedKeypoints1))
 
-        prevFrameCnt = currFrameCnt
-        currFrameCnt += 1
-        cnt += 1
-        cnt2 += 1
+        plotter.updatePlot(image2, matchedKeypoints2)
+        # plt.clf()
+        # plt.subplot(2, 1, 1)
+        # plt.plot(groundTruthPoses[:, 0, 3], groundTruthPoses[:, 2, 3], 'r',
+        #          np.array(estimatedPoses)[:, 0, 3], np.array(estimatedPoses)[:, 2, 3], 'b')
+        # plt.subplot(2, 1, 2)
+        # plt.imshow(image2, cmap='gray')
+        # plt.show(block=False)
+        # plt.pause(0.1)
+
+
+
 
     return np.array(estimatedPoses)
 
