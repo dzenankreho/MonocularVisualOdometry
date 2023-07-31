@@ -1,8 +1,11 @@
 import numpy as np
 import cv2 as cv
 from matplotlib import pyplot as plt
+from drawnow import drawnow, figure
 import os
+from KITTI_SequenceLoader import KITTISequenceLoader
 
+loader = KITTISequenceLoader("KITTI00")
 
 orb = cv.ORB_create(2000)
 bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
@@ -44,23 +47,28 @@ def detectComputeAndMatchORB(image1, image2):
     imageHeight = np.shape(image1)[0]
     imageWidth = np.shape(image1)[1]
 
-    image11 = image1[0:int(imageHeight/2), 0:int(imageWidth/2)]
-    image21 = image2[0:int(imageHeight/2), 0:int(imageWidth/2)]
-    image12 = image1[0:int(imageHeight/2), int(imageWidth/2):imageWidth]
-    image22 = image2[0:int(imageHeight/2), int(imageWidth/2):imageWidth]
-    image13 = image1[int(imageHeight/2):imageHeight, 0:int(imageWidth/2)]
-    image23 = image2[int(imageHeight/2):imageHeight, 0:int(imageWidth/2)]
-    image14 = image1[int(imageHeight/2):imageHeight, int(imageWidth/2):imageWidth]
-    image24 = image2[int(imageHeight/2):imageHeight, int(imageWidth/2):imageWidth]
-
+    imagesVec = []
+    imageShift = []
+    subimageWidthRatio = 1
+    subimageHeightRatio = 1
+    for i in range(subimageHeightRatio):
+        for j in range(subimageWidthRatio):
+            imageShift.append((int(i*imageHeight/subimageHeightRatio),
+                               int(j*imageWidth/subimageWidthRatio)))
+            imagesVec.append((image1[int(i*imageHeight/subimageHeightRatio):int((i+1)*imageHeight/subimageHeightRatio),
+                                     int(j*imageWidth/subimageWidthRatio):int((j+1)*imageWidth/subimageWidthRatio)],
+                              image2[int(i*imageHeight/subimageHeightRatio):int((i+1)*imageHeight/subimageHeightRatio),
+                                     int(j*imageWidth/subimageWidthRatio):int((j+1)*imageWidth/subimageWidthRatio)]))
 
     matchedKeypoints1 = []
     matchedKeypoints2 = []
 
-
-    for cnt, images in enumerate([(image11, image21), (image12, image22), (image13, image23), (image14, image24)]):
+    for cnt, images in enumerate(imagesVec):
         keypoints1, descriptors1 = orb.detectAndCompute(images[0], None)
         keypoints2, descriptors2 = orb.detectAndCompute(images[1], None)
+
+        if type(descriptors1) == type(None) or type(descriptors2) == type(None):
+            continue
 
         matches = bf.match(descriptors1, descriptors2)
         matches = sorted(matches, key=lambda x: x.distance)
@@ -69,22 +77,13 @@ def detectComputeAndMatchORB(image1, image2):
             (x1, y1) = keypoints1[match.queryIdx].pt
             (x2, y2) = keypoints2[match.trainIdx].pt
 
-            if cnt == 1:
-                x1 += int(imageWidth / 2)
-                x2 += int(imageWidth / 2)
-            elif cnt == 2:
-                y1 += int(imageHeight / 2)
-                y2 += int(imageHeight / 2)
-            elif cnt == 3:
-                x1 += int(imageWidth / 2)
-                x2 += int(imageWidth / 2)
-                y1 += int(imageHeight / 2)
-                y2 += int(imageHeight / 2)
-
+            y1 += imageShift[cnt][0]
+            y2 += imageShift[cnt][0]
+            x1 += imageShift[cnt][1]
+            x2 += imageShift[cnt][1]
 
             matchedKeypoints1.append((x1, y1))
             matchedKeypoints2.append((x2, y2))
-
 
     return np.array(matchedKeypoints1), np.array(matchedKeypoints2)
 
@@ -142,24 +141,48 @@ def detectComputeAndMatchORB(image1, image2):
 
 
 def runVO():
-    gd = getGroundTruthFromFile(r'KITTI03\03.txt')
-    scale = np.linalg.norm(np.diff(gd[0:len(gd):1], axis=0)[:, 0:3, 3], axis=1)
+    # gd = getGroundTruthFromFile(r'KITTI05\05.txt')
+    # scale = np.linalg.norm(np.diff(gd[0:len(gd):1], axis=0)[:, 0:3, 3], axis=1)
 
     estimatedPoses = [np.eye(4)]
 
-    K = getIntrinsicParamFromFile(r'KITTI03\calib.txt')
+    K = loader.getIntrinsicCameraParameters()
 
     machedKeypoints = []
     points3D = []
 
     cnt = 0
     cnt2 = 0
+
+    groundTruthPoses = loader.getAllGroundTruthPoses()
+    plt.figure()
+    plt.pause(0.2)
+    plt.subplot(2, 1, 1)
+    plt.plot(groundTruthPoses[:, 0, 3], groundTruthPoses[:, 2, 3], 'r',
+             np.array(estimatedPoses)[:, 0, 3], np.array(estimatedPoses)[:, 2, 3], 'b')
+    plt.subplot(2, 1, 2)
+    plt.imshow(loader.getFrame(0), cmap='gray')
+    plt.show(block=False)
+    plt.pause(0.2)
+
+
+    prevFrameCnt = 0
+    currFrameCnt = 1
     while True:
-        if not os.path.exists("KITTI03\\image_0\\" + str(cnt + 1).zfill(6) + ".png"):
+        # if cnt == 1000:
+        #     break
+        # if not os.path.exists("KITTI05\\image_0\\" + str(cnt + 1).zfill(6) + ".png"):
+        #     break
+
+        # image1 = cv.imread("KITTI05\\image_0\\" + str(cnt).zfill(6) + ".png", cv.IMREAD_GRAYSCALE)
+        # image2 = cv.imread("KITTI05\\image_0\\" + str(cnt + 1).zfill(6) + ".png", cv.IMREAD_GRAYSCALE)
+
+        image1 = loader.getFrame(prevFrameCnt)
+        try:
+            image2 = loader.getFrame(currFrameCnt)
+        except ValueError:
             break
 
-        image1 = cv.imread("KITTI03\\image_0\\" + str(cnt).zfill(6) + ".png", cv.IMREAD_GRAYSCALE)
-        image2 = cv.imread("KITTI03\\image_0\\" + str(cnt + 1).zfill(6) + ".png", cv.IMREAD_GRAYSCALE)
 
         matchedKeypoints1, matchedKeypoints2 = detectComputeAndMatchORB(image1, image2)
         machedKeypoints.append((matchedKeypoints1, matchedKeypoints2))
@@ -184,8 +207,12 @@ def runVO():
 
         E, mask1 = cv.findEssentialMat(matchedKeypoints1, matchedKeypoints2, K, threshold=1, method=cv.RANSAC)
         _, R, t, mask2 = cv.recoverPose(E, matchedKeypoints1, matchedKeypoints2, K, mask=mask1)
-        t = t * scale[cnt2]
-
+        tmp = loader.getGroundTruthScale(prevFrameCnt, currFrameCnt)
+        if tmp < 0.2:
+            currFrameCnt += 1
+            continue
+        t = t * tmp
+        print(tmp)
         #
         # pts3D = cv.triangulatePoints(K @ estimatedPoses[-1][0:3, :],
         #                              K @ np.hstack((R, t)),
@@ -275,39 +302,44 @@ def runVO():
         estimatedPoses.append(estimatedPoses[-1]
                               @ np.linalg.inv(np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))))
 
+        plt.clf()
+        plt.subplot(2, 1, 1)
+        plt.plot(groundTruthPoses[:, 0, 3], groundTruthPoses[:, 2, 3], 'r',
+                 np.array(estimatedPoses)[:, 0, 3], np.array(estimatedPoses)[:, 2, 3], 'b')
+        plt.subplot(2, 1, 2)
+        plt.imshow(image2, cmap='gray')
+        plt.show(block=False)
+        plt.pause(0.2)
         # if estimatedPoses[-1][2, 3] > 135:
         #     print(np.shape(matchedKeypoints1))
 
+        prevFrameCnt = currFrameCnt
+        currFrameCnt += 1
         cnt += 1
         cnt2 += 1
 
     return np.array(estimatedPoses)
 
 
-groundTruthPoses = getGroundTruthFromFile(r'KITTI03\03.txt')
+# loader.playSequence()
+# exit(0)
+
+# plt.plot([1, 2, 3], [2, 3, 4])
+# plt.show(block=False)
+# # plt.ion()
+# plt.pause(0.1)
+# print("test")
+# plt.plot([4, 2, 1], [2, 3, 4])
+# plt.show(block=False)
+# # plt.ion()
+# plt.pause(0.1)
+# groundTruthPoses = loader.getAllGroundTruthPoses()
 estimatedPoses = runVO()
 
-x1 = []
-z1 = []
-i = 0
-tmp = np.linalg.norm(np.diff(groundTruthPoses, axis=0)[:, 0:3, 3], axis=1)
-for pose in estimatedPoses:
-    if i == 0:
-        x1.append(pose[0][3])
-        z1.append(pose[2][3])
-    else:
-        x1.append(pose[0][3] * tmp[i - 1])
-        z1.append(pose[2][3] * tmp[i - 1])
-    i += 1
 
-plt.figure()
-plt.plot(groundTruthPoses[:, 0, 3], groundTruthPoses[:, 2, 3], 'r',
-         # x1, z1, 'b')
-         estimatedPoses[:, 0, 3], estimatedPoses[:, 2, 3], 'b')
 
-# print(np.linalg.norm(np.diff(groundTruthPoses, axis=0)[:, 0:3, 3], axis=1))
-# print(np.linalg.norm(np.diff(estimatedPoses, axis=0)[:, 0:3, 3], axis=1))
-
-plt.show()
-
-# tmp = np.linalg.norm(np.diff(groundTruthPoses, axis=0)[:, 0:3, 3], axis=1)
+# plt.figure()
+# plt.plot(groundTruthPoses[:, 0, 3], groundTruthPoses[:, 2, 3], 'r',
+#          estimatedPoses[:, 0, 3], estimatedPoses[:, 2, 3], 'b')
+#
+# plt.show()

@@ -9,8 +9,19 @@ class KITTISequenceLoader:
             raise OSError("Invalid sequence location")
 
         self.sequenceLocation = sequenceLocation
+
         self.numberOfFrames = len([file for file in os.listdir(self.sequenceLocation + "\\image_0")
                                    if file.endswith(".png")])
+
+        groundTruthPoses = []
+        with open(self.sequenceLocation + "\\poses.txt", 'r') as f:
+            for line in f.readlines():
+                groundTruthPoses.append(np.vstack((np.fromstring(line, dtype=np.float64, sep=' ').reshape(3, 4),
+                                                   [0, 0, 0, 1])))
+        self.groundTruthPoses = np.array(groundTruthPoses)
+
+        with open(self.sequenceLocation + "\\calib.txt", 'r') as f:
+            self.K = np.reshape(np.fromstring(f.readline(), dtype=np.float64, sep=' '), (3, 4))[0:3, 0:3]
 
 
     def getFrame(self, frameNumber):
@@ -24,18 +35,14 @@ class KITTISequenceLoader:
 
 
     def getIntrinsicCameraParameters(self):
-        with open(self.sequenceLocation + "\\calib.txt", 'r') as f:
-            return np.reshape(np.fromstring(f.readline(), dtype=np.float64, sep=' '), (3, 4))[0:3, 0:3]
+        return self.K
 
 
     def getGroundTruthPose(self, frameNumber):
         if frameNumber < 0 or frameNumber >= self.numberOfFrames:
             raise ValueError("Invalid frame number")
 
-        with open(self.sequenceLocation + "\\poses.txt", 'r') as f:
-            content = f.readlines()
-            return np.vstack((np.fromstring(content[frameNumber], dtype=np.float64, sep=' ').reshape(3, 4),
-                              [0, 0, 0, 1]))
+        return self.groundTruthPoses[frameNumber]
 
 
     def getGroundTruthScale(self, prevFrameNumber, currFrameNumber):
@@ -43,8 +50,8 @@ class KITTISequenceLoader:
                 or currFrameNumber < 0 or currFrameNumber >= self.numberOfFrames:
             raise ValueError("Invalid frame number")
 
-        return np.linalg.norm(self.getGroundTruthPose(currFrameNumber)[0:3, 3]
-                              - self.getGroundTruthPose(prevFrameNumber)[0:3, 3])
+        return np.linalg.norm(self.groundTruthPoses[currFrameNumber][0:3, 3]
+                              - self.groundTruthPoses[prevFrameNumber][0:3, 3])
 
 
     def getNumberOfFrames(self):
@@ -52,7 +59,7 @@ class KITTISequenceLoader:
 
 
     def getAllGroundTruthPoses(self):
-        return np.array([self.getGroundTruthPose(i) for i in range(self.numberOfFrames)])
+        return self.groundTruthPoses
 
 
     def playSequence(self):
