@@ -3,7 +3,7 @@ import numpy as np
 import cv2 as cv
 
 
-class KITTIPlotter:
+class Plotter:
     def __init__(self, groundTruthPoses, estimatedPoses):
         self.groundTruthPoses = groundTruthPoses
         self.estimatedPoses = estimatedPoses
@@ -30,16 +30,21 @@ class KITTIPlotter:
         plt.subplot(2, 2, (1, 3))
         plt.plot(self.groundTruthPoses[:, 0, 3], self.groundTruthPoses[:, 2, 3], 'r',
                  np.array(self.estimatedPoses)[:, 0, 3], np.array(self.estimatedPoses)[:, 2, 3], 'b')
+        plt.title(r"Trajectory", wrap=True)
+        plt.legend([r"Ground truth", r"Estimated"])
         plt.subplot(2, 2, 2)
         plt.imshow(frame, cmap='gray')
+        plt.title(r"Current image", wrap=True)
         plt.subplot(2, 2, 4)
         plt.imshow(cv.drawKeypoints(frame, cv.KeyPoint_convert(keypoints), None, color=(0, 255, 0), flags=0),
                    cmap='gray')
+        plt.title(r"Current image with detected ORB features", wrap=True)
         plt.show(block=False)
         plt.pause(0.1)
 
 
     def plotResult(self):
+        plt.close(self.figure)
         plt.figure()
         plt.plot(self.groundTruthPoses[:, 0, 3], self.groundTruthPoses[:, 2, 3], 'r',
                  np.array(self.estimatedPoses)[:, 0, 3], np.array(self.estimatedPoses)[:, 2, 3], 'b')
