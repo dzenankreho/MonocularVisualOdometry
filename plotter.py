@@ -48,4 +48,6 @@ class Plotter:
         plt.figure()
         plt.plot(self.groundTruthPoses[:, 0, 3], self.groundTruthPoses[:, 2, 3], 'r',
                  np.array(self.estimatedPoses)[:, 0, 3], np.array(self.estimatedPoses)[:, 2, 3], 'b')
+        plt.title(r"Trajectory", wrap=True)
+        plt.legend([r"Ground truth", r"Estimated"])
         plt.show()

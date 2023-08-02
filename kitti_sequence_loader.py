@@ -21,7 +21,7 @@ class KITTISequenceLoader:
         self.groundTruthPoses = np.array(groundTruthPoses)
 
         with open(self.sequenceLocation + "\\calib.txt", 'r') as f:
-            self.K = np.reshape(np.fromstring(f.readline(), dtype=np.float64, sep=' '), (3, 4))[0:3, 0:3]
+            self.K = np.reshape(np.fromstring(f.readline()[4:], dtype=np.float64, sep=' '), (3, 4))[0:3, 0:3]
 
 
     def getFrame(self, frameNumber):
