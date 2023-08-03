@@ -10,7 +10,7 @@ class VisualOdometry:
         self.kittiLoader = KITTISequenceLoader(sequenceLocation)
         self.groundTruthPoses = self.kittiLoader.getAllGroundTruthPoses()
         self.K = self.kittiLoader.getIntrinsicCameraParameters()
-        self.estimatedPoses = [np.eye(4)]
+        self.estimatedPoses = []
         self.orb = cv.ORB_create(nfeatures=500, scoreType=cv.ORB_FAST_SCORE)
         self.matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
         self.numOfPartsWidth = 3
@@ -123,6 +123,8 @@ class VisualOdometry:
         prevFrameCnt = firstFrameCnt
         currFrameCnt = prevFrameCnt + 1
 
+        self.estimatedPoses.append(self.groundTruthPoses[firstFrameCnt])
+
         prevPrevFrame = None
         prevFrame = self.kittiLoader.getFrame(prevFrameCnt)
         currFrame = None
@@ -148,17 +150,18 @@ class VisualOdometry:
                                            threshold=1, method=cv.RANSAC)
             _, R, t, mask2 = cv.recoverPose(E, matchedKeypoints1, matchedKeypoints2, self.K, mask=mask1)
             scale = self.kittiLoader.getGroundTruthScale(prevFrameCnt, currFrameCnt)
-            # print(np.transpose(t)[0])
             t = t * scale
 
-            if not isinstance(prevPrevFrameCnt, type(None)):
+
+            if False and not isinstance(prevPrevFrameCnt, type(None)):
                 threeFrameKeypoints1, threeFrameKeypoints2, threeFrameKeypoints3 =\
                     self.findFeatureMatches3Frames(prevPrevFrame, prevFrame, currFrame)
 
                 relativeScale = self.getRelativeScale(R, t, threeFrameKeypoints1,
-                                                      threeFrameKeypoints2, threeFrameKeypoints3, prevPrevFrameCnt)
+                                                      threeFrameKeypoints2, threeFrameKeypoints3)
 
-            if scale < 0.3:
+            # print(np.abs(t/scale))
+            if not np.logical_and.reduce((np.abs(t/scale) < 0.3) | (np.abs(t/scale) > 0.9))[0]:
                 self.estimatedPoses.append(self.estimatedPoses[-1])
             else:
                 self.estimatedPoses.append(self.estimatedPoses[-1]
@@ -199,7 +202,7 @@ class VisualOdometry:
         return np.array(self.estimatedPoses), self.groundTruthPoses
 
 
-    def getRelativeScale(self, R, t, matchedKeypoints1, matchedKeypoints2, matchedKeypoints3, prevPrevFrameCnt):
+    def getRelativeScale(self, R, t, matchedKeypoints1, matchedKeypoints2, matchedKeypoints3):
         points3d12 = cv.triangulatePoints(self.K @ self.estimatedPoses[-2][0:3, :],
                                           self.K @ self.estimatedPoses[-1][0:3, :],
                                           np.transpose(matchedKeypoints1),
