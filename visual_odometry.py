@@ -9,6 +9,7 @@ class VisualOdometry:
         self.plotProgress = plotProgress
         self.kittiLoader = KITTISequenceLoader(sequenceLocation)
         self.groundTruthPoses = self.kittiLoader.getAllGroundTruthPoses()
+        self.K = self.kittiLoader.getIntrinsicCameraParameters()
         self.estimatedPoses = [np.eye(4)]
         self.orb = cv.ORB_create(nfeatures=500, scoreType=cv.ORB_FAST_SCORE)
         self.matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
@@ -73,7 +74,7 @@ class VisualOdometry:
         for cnt, images in enumerate(imagesVec):
             keypoints1, descriptors1 = self.orb.detectAndCompute(images[0], None)
             keypoints2, descriptors2 = self.orb.detectAndCompute(images[1], None)
-            keypoints3, descriptors3 = self.orb.detectAndCompute(images[3], None)
+            keypoints3, descriptors3 = self.orb.detectAndCompute(images[2], None)
 
             if isinstance(descriptors1, type(None)) or isinstance(descriptors2, type(None))\
                     or isinstance(descriptors3, type(None)):
@@ -85,9 +86,12 @@ class VisualOdometry:
             for match12 in matches12:
                 for match23 in matches23:
                     if match12.trainIdx == match23.queryIdx:
-                        matchedKeypoints1.append(np.array(keypoints1[match12.queryIdx].pt) + imageShift[cnt])
-                        matchedKeypoints2.append(keypoints2[match12.trainIdx].pt + imageShift[cnt])
-                        matchedKeypoints3.append(keypoints3[match23.trainIdx].pt + imageShift[cnt])
+                        matchedKeypoints1.append(np.array(keypoints1[match12.queryIdx].pt)
+                                                 + imageShift[cnt])
+                        matchedKeypoints2.append(np.array(keypoints2[match12.trainIdx].pt)
+                                                 + imageShift[cnt])
+                        matchedKeypoints3.append(np.array(keypoints3[match23.trainIdx].pt)
+                                                 + imageShift[cnt])
                         break
 
         return np.array(matchedKeypoints1), np.array(matchedKeypoints2), np.array(matchedKeypoints3)
@@ -112,13 +116,16 @@ class VisualOdometry:
 
 
     def run(self, firstFrameCnt=0, lastFrameCnt=None):
-        K = self.kittiLoader.getIntrinsicCameraParameters()
-
         if lastFrameCnt is None:
             lastFrameCnt = self.kittiLoader.getNumberOfFrames()
 
+        prevPrevFrameCnt = None
         prevFrameCnt = firstFrameCnt
         currFrameCnt = prevFrameCnt + 1
+
+        prevPrevFrame = None
+        prevFrame = self.kittiLoader.getFrame(prevFrameCnt)
+        currFrame = None
 
         if self.plotProgress:
             self.plotter.setupPlot()
@@ -129,22 +136,27 @@ class VisualOdometry:
             if currFrameCnt == lastFrameCnt:
                 break
 
-            image1 = self.kittiLoader.getFrame(prevFrameCnt)
-            image2 = self.kittiLoader.getFrame(currFrameCnt)
+            currFrame = self.kittiLoader.getFrame(currFrameCnt)
 
-            matchedKeypoints1, matchedKeypoints2 = self.findFeatureMatches2Frames(image1, image2)
+            matchedKeypoints1, matchedKeypoints2 = self.findFeatureMatches2Frames(prevFrame, currFrame)
 
             if self.plotProgress and firstIter:
-                self.plotter.updatePlot(image1, matchedKeypoints1)
+                self.plotter.updatePlot(prevFrame, matchedKeypoints1)
                 firstIter = False
 
-            E, mask1 = cv.findEssentialMat(matchedKeypoints1, matchedKeypoints2, K, threshold=1, method=cv.RANSAC)
-            _, R, t, mask2 = cv.recoverPose(E, matchedKeypoints1, matchedKeypoints2, K, mask=mask1)
+            E, mask1 = cv.findEssentialMat(matchedKeypoints1, matchedKeypoints2, self.K,
+                                           threshold=1, method=cv.RANSAC)
+            _, R, t, mask2 = cv.recoverPose(E, matchedKeypoints1, matchedKeypoints2, self.K, mask=mask1)
             scale = self.kittiLoader.getGroundTruthScale(prevFrameCnt, currFrameCnt)
+            # print(np.transpose(t)[0])
             t = t * scale
 
-            matchedKeypoints1 = matchedKeypoints1[mask2[:, 0] == 1]
-            matchedKeypoints2 = matchedKeypoints2[mask2[:, 0] == 1]
+            if not isinstance(prevPrevFrameCnt, type(None)):
+                threeFrameKeypoints1, threeFrameKeypoints2, threeFrameKeypoints3 =\
+                    self.findFeatureMatches3Frames(prevPrevFrame, prevFrame, currFrame)
+
+                relativeScale = self.getRelativeScale(R, t, threeFrameKeypoints1,
+                                                      threeFrameKeypoints2, threeFrameKeypoints3, prevPrevFrameCnt)
 
             if scale < 0.3:
                 self.estimatedPoses.append(self.estimatedPoses[-1])
@@ -170,15 +182,53 @@ class VisualOdometry:
                 #     self.estimatedPoses[-1] = np.vstack((np.hstack((cv.Rodrigues(rvec)[0], tvec)),
                 #                                          np.array([0, 0, 0, 1])))
 
+                prevPrevFrameCnt = prevFrameCnt
                 prevFrameCnt = currFrameCnt
+                prevPrevFrame = prevFrame
+                prevFrame = currFrame
 
             currFrameCnt += 1
 
             if self.plotProgress:
-                self.plotter.updatePlot(image2, matchedKeypoints2)
+                self.plotter.updatePlot(currFrame, matchedKeypoints2)
             # print(timer()-start)
 
         if self.plotProgress:
             self.plotter.plotResult()
 
         return np.array(self.estimatedPoses), self.groundTruthPoses
+
+
+    def getRelativeScale(self, R, t, matchedKeypoints1, matchedKeypoints2, matchedKeypoints3, prevPrevFrameCnt):
+        points3d12 = cv.triangulatePoints(self.K @ self.estimatedPoses[-2][0:3, :],
+                                          self.K @ self.estimatedPoses[-1][0:3, :],
+                                          np.transpose(matchedKeypoints1),
+                                          np.transpose(matchedKeypoints2))
+
+        points3d12 = np.transpose(points3d12)
+        points3d12[:, 0] /= points3d12[:, 3]
+        points3d12[:, 1] /= points3d12[:, 3]
+        points3d12[:, 2] /= points3d12[:, 3]
+        points3d12 = points3d12[:, 0:3]
+
+        points3d23 = cv.triangulatePoints(self.K @ self.estimatedPoses[-1][0:3, :],
+                                          self.K @ np.hstack((R, t)),
+                                          np.transpose(matchedKeypoints2),
+                                          np.transpose(matchedKeypoints3))
+
+        points3d23 = np.transpose(points3d23)
+        points3d23[:, 0] /= points3d23[:, 3]
+        points3d23[:, 1] /= points3d23[:, 3]
+        points3d23[:, 2] /= points3d23[:, 3]
+        points3d23 = points3d23[:, 0:3]
+
+        numOf3dPoints = np.shape(points3d12)[0]
+        i = np.random.randint(0, numOf3dPoints, 200)
+        j = np.random.randint(0, numOf3dPoints, 200)
+        _, indices1, indices2 = np.intersect1d(i, j, return_indices=True)
+        i = np.delete(i, indices1)
+        j = np.delete(j, indices2)
+        scales = np.linalg.norm(points3d12[i] - points3d12[j], axis=1)\
+                 / np.linalg.norm(points3d23[i] - points3d23[j], axis=1)
+
+        return np.median(scales)

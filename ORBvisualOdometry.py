@@ -116,29 +116,29 @@
 
 
 
-# from visual_odometry import VisualOdometry
-# from plotter import Plotter
-#
-# sequences = {
-#     0: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\00",
-#     1: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\01",
-#     2: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\02",
-#     3: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\03",
-#     4: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\04",
-#     5: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\05",
-#     6: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\06",
-#     7: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\07",
-#     8: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\08",
-#     9: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\09",
-#     10: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\10",
-# }
-#
-#
-# VO = VisualOdometry(sequences[5], True)
-# estimatedPoses, groundTruthPoses = VO.run()
-# Plotter.plotResult()
-#
-# exit(0)
+from visual_odometry import VisualOdometry
+from plotter import Plotter
+
+sequences = {
+    0: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\00",
+    1: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\01",
+    2: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\02",
+    3: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\03",
+    4: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\04",
+    5: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\05",
+    6: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\06",
+    7: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\07",
+    8: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\08",
+    9: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\09",
+    10: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\10",
+}
+
+
+VO = VisualOdometry(sequences[8], True)
+estimatedPoses, groundTruthPoses = VO.run()
+Plotter.plotResult()
+
+exit(0)
 
 
 
@@ -283,10 +283,9 @@ while True:
 
     # pointsHom = cv.triangulatePoints(K @ groundTruthPoses[cnt1][0:3, :], K @ groundTruthPoses[cnt2][0:3, :],
     #                                  np.transpose(matchedKeypoints1), np.transpose(matchedKeypoints2))
+
     pointsHom = cv.triangulatePoints(K @ estimatedPoses[-2][0:3, :], K @ estimatedPoses[-1][0:3, :],
                                      np.transpose(matchedKeypoints1), np.transpose(matchedKeypoints2))
-
-
     pointsHom = np.transpose(pointsHom)
     pointsHom[:, 0] /= pointsHom[:, 3]
     pointsHom[:, 1] /= pointsHom[:, 3]
