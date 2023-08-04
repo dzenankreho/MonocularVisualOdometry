@@ -2,6 +2,7 @@ from KITTISequenceLoader import KITTISequenceLoader
 from Plotter import Plotter
 import numpy as np
 import cv2 as cv
+import warnings
 
 
 class VisualOdometry:
@@ -15,7 +16,13 @@ class VisualOdometry:
         self.matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
         self.numOfPartsWidth = 3
         self.numOfPartsHeight = 2
-        
+        self.prevFrameCnt = None
+        self.currFrameCnt = None
+        self.prevPrevFrame = None
+        self.prevFrame = None
+        self.currFrame = None
+
+
         if plotProgress:
             self.plotter = Plotter(self.groundTruthPoses, self.estimatedPoses)
 
@@ -101,40 +108,21 @@ class VisualOdometry:
         if lastFrameCnt is None:
             lastFrameCnt = self.kittiLoader.getNumberOfFrames()
 
-        prevPrevFrameCnt = None
-        prevFrameCnt = firstFrameCnt
-        currFrameCnt = prevFrameCnt + 1
-
+        self.prevFrameCnt = firstFrameCnt
+        self.currFrameCnt = self.prevFrameCnt + 1
         self.estimatedPoses.append(self.groundTruthPoses[firstFrameCnt])
-
-        prevPrevFrame = None
-        prevFrame = self.kittiLoader.getFrame(prevFrameCnt)
-        currFrame = None
+        self.prevFrame = self.kittiLoader.getFrame(firstFrameCnt)
 
         if self.plotProgress:
             self.plotter.setupPlot()
 
-        firstIter = True
         while True:
-            if currFrameCnt == lastFrameCnt:
+            if self.currFrameCnt == lastFrameCnt:
                 break
 
-            currFrame = self.kittiLoader.getFrame(currFrameCnt)
+            self.currFrame = self.kittiLoader.getFrame(self.currFrameCnt)
 
-            matchedKeypoints1, matchedKeypoints2 = self.findFeatureMatches2Frames(prevFrame, currFrame)
-
-            if self.plotProgress and firstIter:
-                self.plotter.updatePlot(prevFrame, matchedKeypoints1)
-                firstIter = False
-
-            E, mask1 = cv.findEssentialMat(matchedKeypoints1, matchedKeypoints2, self.K,
-                                           threshold=1, method=cv.RANSAC)
-            _, R, t, mask2 = cv.recoverPose(E, matchedKeypoints1, matchedKeypoints2, self.K, mask=mask1)
-            if not useGroundTruthScale and not isinstance(prevPrevFrameCnt, type(None)):
-                scale = self.getRelativeScale(R, t, prevPrevFrame, prevFrame, currFrame)
-            else:
-                scale = self.kittiLoader.getGroundTruthScale(prevFrameCnt, currFrameCnt)
-            t = t * scale
+            R, t, scale, matchedKeypoints2 = self.estimateMotion2dTo2d(useGroundTruthScale)
 
             if not np.logical_and.reduce((np.abs(t/scale) < 0.2) | (np.abs(t/scale) > 0.9))[0]:
                 self.estimatedPoses.append(self.estimatedPoses[-1])
@@ -142,15 +130,14 @@ class VisualOdometry:
                 self.estimatedPoses.append(self.estimatedPoses[-1]
                                            @ np.linalg.inv(np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))))
 
-                prevPrevFrameCnt = prevFrameCnt
-                prevFrameCnt = currFrameCnt
-                prevPrevFrame = prevFrame
-                prevFrame = currFrame
+                self.prevFrameCnt = self.currFrameCnt
+                self.prevPrevFrame = self.prevFrame
+                self.prevFrame = self.currFrame
 
-            currFrameCnt += 1
+            self.currFrameCnt += 1
 
             if self.plotProgress:
-                self.plotter.updatePlot(currFrame, matchedKeypoints2)
+                self.plotter.updatePlot(self.currFrame, matchedKeypoints2)
 
         if self.plotProgress:
             self.plotter.plotResult()
@@ -158,9 +145,9 @@ class VisualOdometry:
         return np.array(self.estimatedPoses), self.groundTruthPoses
 
 
-    def getRelativeScale(self, R, t, prevPrevFrame, prevFrame, currFrame):
+    def getRelativeScale(self, R, t):
         matchedKeypoints1, matchedKeypoints2, matchedKeypoints3 = \
-            self.findFeatureMatches3Frames(prevPrevFrame, prevFrame, currFrame)
+            self.findFeatureMatches3Frames(self.prevPrevFrame, self.prevFrame, self.currFrame)
 
         matchedKeypoints1 = cv.undistortPoints(matchedKeypoints1, self.K, np.array([]))
         matchedKeypoints2 = cv.undistortPoints(matchedKeypoints2, self.K, np.array([]))
@@ -195,8 +182,27 @@ class VisualOdometry:
         _, indices1, indices2 = np.intersect1d(i, j, return_indices=True)
         i = np.delete(i, indices1)
         j = np.delete(j, indices2)
-        scales = np.linalg.norm(points3d12[i] - points3d12[j], axis=1) \
-                 / np.linalg.norm(points3d23[i] - points3d23[j], axis=1)
-        scales = scales[~np.isnan(scales) & (scales < 3) & (scales > 0.3)]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            scales = np.linalg.norm(points3d12[i] - points3d12[j], axis=1) \
+                     / np.linalg.norm(points3d23[i] - points3d23[j], axis=1)
+            scales = scales[~np.isnan(scales) & (scales < 3) & (scales > 0.3)]
 
-        return np.mean(scales)
+            return np.mean(scales)
+
+
+    def estimateMotion2dTo2d(self, useGroundTruthScale):
+        matchedKeypoints1, matchedKeypoints2 = self.findFeatureMatches2Frames(self.prevFrame, self.currFrame)
+
+        E, mask1 = cv.findEssentialMat(matchedKeypoints1, matchedKeypoints2, self.K,
+                                       threshold=1, method=cv.RANSAC)
+        _, R, t, mask2 = cv.recoverPose(E, matchedKeypoints1, matchedKeypoints2, self.K, mask=mask1)
+        scaleCalculated = False
+        if not useGroundTruthScale and not isinstance(self.prevPrevFrame, type(None)):
+            scale = self.getRelativeScale(R, t)
+            scaleCalculated = not np.isnan(scale)
+        if not scaleCalculated:
+            scale = self.kittiLoader.getGroundTruthScale(self.prevFrameCnt, self.currFrameCnt)
+        t = t * scale
+
+        return R, t, scale, matchedKeypoints2
