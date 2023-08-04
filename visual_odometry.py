@@ -92,7 +92,7 @@ class VisualOdometry:
                                                  + imageShift[cnt])
                         matchedKeypoints3.append(np.array(keypoints3[match23.trainIdx].pt)
                                                  + imageShift[cnt])
-                        break
+                        # break
 
         return np.array(matchedKeypoints1), np.array(matchedKeypoints2), np.array(matchedKeypoints3)
 
@@ -153,12 +153,9 @@ class VisualOdometry:
             t = t * scale
 
 
-            if False and not isinstance(prevPrevFrameCnt, type(None)):
-                threeFrameKeypoints1, threeFrameKeypoints2, threeFrameKeypoints3 =\
-                    self.findFeatureMatches3Frames(prevPrevFrame, prevFrame, currFrame)
-
-                relativeScale = self.getRelativeScale(R, t, threeFrameKeypoints1,
-                                                      threeFrameKeypoints2, threeFrameKeypoints3)
+            if True and not isinstance(prevPrevFrameCnt, type(None)):
+                relativeScale = self.getRelativeScale(R, t/scale, prevPrevFrame, prevFrame, currFrame)
+                print(scale, relativeScale)
 
             # print(np.abs(t/scale))
             if not np.logical_and.reduce((np.abs(t/scale) < 0.3) | (np.abs(t/scale) > 0.9))[0]:
@@ -190,6 +187,8 @@ class VisualOdometry:
                 prevPrevFrame = prevFrame
                 prevFrame = currFrame
 
+            # print(scale, self.estimatedPoses[-2][1, 3] / self.estimatedPoses[-1][1, 3],
+            #       self.estimatedPoses[-1][1, 3] / self.estimatedPoses[-2][1, 3])
             currFrameCnt += 1
 
             if self.plotProgress:
@@ -202,11 +201,18 @@ class VisualOdometry:
         return np.array(self.estimatedPoses), self.groundTruthPoses
 
 
-    def getRelativeScale(self, R, t, matchedKeypoints1, matchedKeypoints2, matchedKeypoints3):
-        points3d12 = cv.triangulatePoints(self.K @ self.estimatedPoses[-2][0:3, :],
-                                          self.K @ self.estimatedPoses[-1][0:3, :],
-                                          np.transpose(matchedKeypoints1),
-                                          np.transpose(matchedKeypoints2))
+    def getRelativeScale(self, R, t, prevPrevFrame, prevFrame, currFrame):
+        matchedKeypoints1, matchedKeypoints2, matchedKeypoints3 = \
+            self.findFeatureMatches3Frames(prevPrevFrame, prevFrame, currFrame)
+
+        matchedKeypoints1 = cv.undistortPoints(matchedKeypoints1, self.K, np.array([]))
+        matchedKeypoints2 = cv.undistortPoints(matchedKeypoints2, self.K, np.array([]))
+        matchedKeypoints3 = cv.undistortPoints(matchedKeypoints3, self.K, np.array([]))
+
+        points3d12 = cv.triangulatePoints(self.estimatedPoses[-2][0:3, :],
+                                          self.estimatedPoses[-1][0:3, :],
+                                          matchedKeypoints1,
+                                          matchedKeypoints2)
 
         points3d12 = np.transpose(points3d12)
         points3d12[:, 0] /= points3d12[:, 3]
@@ -214,10 +220,10 @@ class VisualOdometry:
         points3d12[:, 2] /= points3d12[:, 3]
         points3d12 = points3d12[:, 0:3]
 
-        points3d23 = cv.triangulatePoints(self.K @ self.estimatedPoses[-1][0:3, :],
-                                          self.K @ np.hstack((R, t)),
-                                          np.transpose(matchedKeypoints2),
-                                          np.transpose(matchedKeypoints3))
+        points3d23 = cv.triangulatePoints(self.estimatedPoses[-1][0:3, :],
+                                          np.hstack((R, t)),
+                                          matchedKeypoints2,
+                                          matchedKeypoints3)
 
         points3d23 = np.transpose(points3d23)
         points3d23[:, 0] /= points3d23[:, 3]
@@ -226,12 +232,14 @@ class VisualOdometry:
         points3d23 = points3d23[:, 0:3]
 
         numOf3dPoints = np.shape(points3d12)[0]
-        i = np.random.randint(0, numOf3dPoints, 200)
-        j = np.random.randint(0, numOf3dPoints, 200)
+
+        i = np.random.randint(0, numOf3dPoints, 300)
+        j = np.random.randint(0, numOf3dPoints, 300)
         _, indices1, indices2 = np.intersect1d(i, j, return_indices=True)
         i = np.delete(i, indices1)
         j = np.delete(j, indices2)
-        scales = np.linalg.norm(points3d12[i] - points3d12[j], axis=1)\
+        scales = np.linalg.norm(points3d12[i] - points3d12[j], axis=1) \
                  / np.linalg.norm(points3d23[i] - points3d23[j], axis=1)
+        scales = scales[~np.isnan(scales) & (scales < 3) & (scales > 0.3)]
 
-        return np.median(scales)
+        return np.mean(scales)
