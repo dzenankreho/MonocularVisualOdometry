@@ -116,8 +116,8 @@
 
 
 
-from visual_odometry import VisualOdometry
-from plotter import Plotter
+from VisualOdometry import VisualOdometry
+from Plotter import Plotter
 
 sequences = {
     0: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\00",
@@ -134,16 +134,16 @@ sequences = {
 }
 
 
-VO = VisualOdometry(sequences[8], True)
-estimatedPoses, groundTruthPoses = VO.run()
+VO = VisualOdometry(sequences[0], True)
+estimatedPoses, groundTruthPoses = VO.run(motionEstimation='3dto2D')
 Plotter.plotResult()
 
 exit(0)
 
 
 
-from plotter import Plotter
-from kitti_sequence_loader import KITTISequenceLoader
+from Plotter import Plotter
+from KITTISequenceLoader import KITTISequenceLoader
 import numpy as np
 import cv2 as cv
 from matplotlib import pyplot as plt
@@ -166,7 +166,7 @@ def splitImages(numOfPartsWidth, numOfPartsHeight, *images):
     return imagesVec, imageShift
 
 
-loader = KITTISequenceLoader(r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\05")
+loader = KITTISequenceLoader(r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\00")
 K = loader.getIntrinsicCameraParameters()
 
 
@@ -181,13 +181,13 @@ plotter = Plotter(groundTruthPoses, estimatedPoses)
 plotter.setupPlot()
 
 length = len(groundTruthPoses)
-cnt1 = 50
+cnt1 = 0
 cnt2 = cnt1 + 1
 cnt3 = cnt2 + 2
 estimatedPoses.append(groundTruthPoses[cnt1])
 while True:
-    if cnt1 >= 80:
-        break
+    # if cnt1 >= 80:
+    #     break
 
     image1 = loader.getFrame(cnt1)
     image2 = loader.getFrame(cnt2)
@@ -272,17 +272,22 @@ while True:
     scale = loader.getGroundTruthScale(cnt1, cnt2)
     t = t * scale
 
-    if cnt1 == 50:
+    if cnt1 == 0:
         estimatedPoses.append(estimatedPoses[-1]
                               @ np.linalg.inv(np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))))
 
 
-    # matchedKeypoints1 = matchedKeypoints1[mask2[:, 0] == 1]
-    # matchedKeypoints2 = matchedKeypoints2[mask2[:, 0] == 1]
-    # matchedKeypoints3 = matchedKeypoints3[mask2[:, 0] == 1]
+    matchedKeypoints1 = matchedKeypoints1[mask2[:, 0] == 1]
+    matchedKeypoints2 = matchedKeypoints2[mask2[:, 0] == 1]
+    matchedKeypoints3 = matchedKeypoints3[mask2[:, 0] == 1]
 
     # pointsHom = cv.triangulatePoints(K @ groundTruthPoses[cnt1][0:3, :], K @ groundTruthPoses[cnt2][0:3, :],
     #                                  np.transpose(matchedKeypoints1), np.transpose(matchedKeypoints2))
+
+    # points3D, _ = triang.linear_LS_triangulation(matchedKeypoints1, K @ estimatedPoses[-2][0:3, :],
+    #                                              matchedKeypoints2, K @ estimatedPoses[-1][0:3, :])
+
+
 
     pointsHom = cv.triangulatePoints(K @ estimatedPoses[-2][0:3, :], K @ estimatedPoses[-1][0:3, :],
                                      np.transpose(matchedKeypoints1), np.transpose(matchedKeypoints2))
@@ -292,9 +297,14 @@ while True:
     pointsHom[:, 2] /= pointsHom[:, 3]
     points3D = pointsHom[:, 0:3]
 
-    _, rvec, t, _ = cv.solvePnPRansac(points3D, matchedKeypoints3, K, np.array([]))
+    mask3 = [i for i in range(len(points3D)) if points3D[i][2] > 0]
+
+    # print(points3D[mask3])
+    _, rvec, t, _ = cv.solvePnPRansac(points3D[mask3], matchedKeypoints3[mask3], K, np.array([]))
 
     R, _ = cv.Rodrigues(rvec)
+
+    # t[2] *= -1
 
     # tmp = np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))
     # relativeTransformation = tmp @ np.linalg.inv(estimatedPoses[-1])
