@@ -1,5 +1,5 @@
-from kitti_sequence_loader import KITTISequenceLoader
-from plotter import Plotter
+from KITTISequenceLoader import KITTISequenceLoader
+from Plotter import Plotter
 import numpy as np
 import cv2 as cv
 
@@ -97,25 +97,7 @@ class VisualOdometry:
         return np.array(matchedKeypoints1), np.array(matchedKeypoints2), np.array(matchedKeypoints3)
 
 
-    def calculateEssentialMatrix(self, points1, points2):
-        numOfPoints = np.shape(points1)[0]
-
-        Q = np.hstack(((points2[:, 0] * points1[:, 0]).reshape((numOfPoints, 1)),
-                       (points2[:, 0] * points1[:, 1]).reshape((numOfPoints, 1)),
-                       (points2[:, 0] * np.ones((1, np.shape(points1)[0]))).reshape((numOfPoints, 1)),
-                       (points2[:, 1] * points1[:, 0]).reshape((numOfPoints, 1)),
-                       (points2[:, 1] * points1[:, 1]).reshape((numOfPoints, 1)),
-                       (points2[:, 1] * np.ones((1, np.shape(points1)[0]))).reshape((numOfPoints, 1)),
-                       (points1[:, 0]).reshape((numOfPoints, 1)),
-                       (points1[:, 1]).reshape((numOfPoints, 1)),
-                       (np.ones((1, np.shape(points1)[0]))).reshape((numOfPoints, 1))))
-
-        _, _, Ev = np.linalg.svd(Q, full_matrices=True)
-        E = Ev[-1]
-        return E.reshape((3, 3))
-
-
-    def run(self, firstFrameCnt=0, lastFrameCnt=None):
+    def run(self, firstFrameCnt=0, lastFrameCnt=None, useGroundTruthScale=True):
         if lastFrameCnt is None:
             lastFrameCnt = self.kittiLoader.getNumberOfFrames()
 
@@ -134,7 +116,6 @@ class VisualOdometry:
 
         firstIter = True
         while True:
-            # start = timer()
             if currFrameCnt == lastFrameCnt:
                 break
 
@@ -149,51 +130,27 @@ class VisualOdometry:
             E, mask1 = cv.findEssentialMat(matchedKeypoints1, matchedKeypoints2, self.K,
                                            threshold=1, method=cv.RANSAC)
             _, R, t, mask2 = cv.recoverPose(E, matchedKeypoints1, matchedKeypoints2, self.K, mask=mask1)
-            scale = self.kittiLoader.getGroundTruthScale(prevFrameCnt, currFrameCnt)
+            if not useGroundTruthScale and not isinstance(prevPrevFrameCnt, type(None)):
+                scale = self.getRelativeScale(R, t, prevPrevFrame, prevFrame, currFrame)
+            else:
+                scale = self.kittiLoader.getGroundTruthScale(prevFrameCnt, currFrameCnt)
             t = t * scale
 
-
-            if True and not isinstance(prevPrevFrameCnt, type(None)):
-                relativeScale = self.getRelativeScale(R, t/scale, prevPrevFrame, prevFrame, currFrame)
-                print(scale, relativeScale)
-
-            # print(np.abs(t/scale))
-            if not np.logical_and.reduce((np.abs(t/scale) < 0.3) | (np.abs(t/scale) > 0.9))[0]:
+            if not np.logical_and.reduce((np.abs(t/scale) < 0.2) | (np.abs(t/scale) > 0.9))[0]:
                 self.estimatedPoses.append(self.estimatedPoses[-1])
             else:
                 self.estimatedPoses.append(self.estimatedPoses[-1]
                                            @ np.linalg.inv(np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))))
-
-                # if False and currFrameCnt > 1:
-                #     points4d = cv.triangulatePoints(K @ self.estimatedPoses[-2][0:3, :],
-                #                                     K @ self.estimatedPoses[-1][0:3, :],
-                #                                     np.transpose(matchedKeypoints1),
-                #                                     np.transpose(matchedKeypoints2))
-                #
-                #     points4d = np.transpose(points4d)
-                #     points4d[:, 0] /= points4d[:, 3]
-                #     points4d[:, 1] /= points4d[:, 3]
-                #     points4d[:, 2] /= points4d[:, 3]
-                #     points3d = points4d[:, 0:3]
-                #
-                #     rvec, tvec = cv.solvePnPRefineLM(points3d, matchedKeypoints2, K, np.array([]),
-                #                                      cv.Rodrigues(self.estimatedPoses[-1][0:3, 0:3])[0],
-                #                                      self.estimatedPoses[-1][0:3, 3].reshape((3, 1)))
-                #     self.estimatedPoses[-1] = np.vstack((np.hstack((cv.Rodrigues(rvec)[0], tvec)),
-                #                                          np.array([0, 0, 0, 1])))
 
                 prevPrevFrameCnt = prevFrameCnt
                 prevFrameCnt = currFrameCnt
                 prevPrevFrame = prevFrame
                 prevFrame = currFrame
 
-            # print(scale, self.estimatedPoses[-2][1, 3] / self.estimatedPoses[-1][1, 3],
-            #       self.estimatedPoses[-1][1, 3] / self.estimatedPoses[-2][1, 3])
             currFrameCnt += 1
 
             if self.plotProgress:
                 self.plotter.updatePlot(currFrame, matchedKeypoints2)
-            # print(timer()-start)
 
         if self.plotProgress:
             self.plotter.plotResult()
