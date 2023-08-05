@@ -269,4 +269,4 @@ class VisualOdometry:
 
         avgFrameProcessTime /= (lastFrameCnt - firstFrameCnt)
 
-        return np.array(self.estimatedPoses), self.groundTruthPoses, avgFrameProcessTime
+        return np.array(self.estimatedPoses), self.groundTruthPoses[firstFrameCnt:lastFrameCnt], avgFrameProcessTime
