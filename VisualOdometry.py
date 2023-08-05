@@ -3,19 +3,38 @@ from Plotter import Plotter
 import numpy as np
 import cv2 as cv
 import warnings
+from timeit import default_timer as timer
 
 
 class VisualOdometry:
-    def __init__(self, sequenceLocation, plotProgress=False):
+    def __init__(self, sequenceLocation, numOfFeatures=500, frameSplitParts=(3, 2),
+                 matcher='bf', plotProgress=False):
         self.plotProgress = plotProgress
         self.kittiLoader = KITTISequenceLoader(sequenceLocation)
         self.groundTruthPoses = self.kittiLoader.getAllGroundTruthPoses()
         self.K = self.kittiLoader.getIntrinsicCameraParameters()
         self.estimatedPoses = []
-        self.orb = cv.ORB_create(nfeatures=500, scoreType=cv.ORB_FAST_SCORE)
-        self.matcher = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
-        self.numOfPartsWidth = 1
-        self.numOfPartsHeight = 1
+
+        self.orb = cv.ORB_create(nfeatures=numOfFeatures,
+                                 scoreType=cv.ORB_FAST_SCORE)
+
+        if matcher.lower() == 'bf':
+            self.matcher = cv.BFMatcher(normType=cv.NORM_HAMMING,
+                                        crossCheck=True)
+        elif matcher.lower() == 'flann':
+            FLANN_INDEX_LSH = 6
+            index_params = dict(algorithm=FLANN_INDEX_LSH,
+                                table_number=6,
+                                key_size=12,
+                                multi_probe_level=1)
+            search_params = dict(checks=50)
+            self.matcher = cv.FlannBasedMatcher(index_params, search_params)
+        else:
+            raise ValueError("Invalid matcher select variable")
+
+        self.numOfPartsWidth = frameSplitParts[0]
+        self.numOfPartsHeight = frameSplitParts[1]
+
         self.prevFrameCnt = None
         self.currFrameCnt = None
         self.prevPrevFrame = None
@@ -101,57 +120,6 @@ class VisualOdometry:
                                                  + imageShift[cnt])
 
         return np.array(matchedKeypoints1), np.array(matchedKeypoints2), np.array(matchedKeypoints3)
-
-
-    def run(self, firstFrameCnt=0, lastFrameCnt=None, useGroundTruthScale=True, motionEstimation='2d-2d'):
-        if motionEstimation.lower() == '2dto2d' or motionEstimation.lower() == '3dto2d':
-            motionEstimation = motionEstimation.lower().replace('to', '-')
-
-        if motionEstimation != '2d-2d' and motionEstimation != '3d-2d':
-            raise ValueError("Invalid motion estimation select variable")
-
-        if lastFrameCnt is None:
-            lastFrameCnt = self.kittiLoader.getNumberOfFrames()
-
-        self.prevFrameCnt = firstFrameCnt
-        self.currFrameCnt = self.prevFrameCnt + 1
-        self.estimatedPoses.append(self.groundTruthPoses[firstFrameCnt])
-        self.prevFrame = self.kittiLoader.getFrame(firstFrameCnt)
-
-        if self.plotProgress:
-            self.plotter.setupPlot()
-
-        while True:
-            if self.currFrameCnt == lastFrameCnt:
-                break
-
-            self.currFrame = self.kittiLoader.getFrame(self.currFrameCnt)
-
-            if motionEstimation.lower() == '2d-2d' or isinstance(self.prevPrevFrame, type(None)):
-                R, t = self.estimateMotion2dTo2d(useGroundTruthScale)
-            else:
-                R, t = self.estimateMotion3dTo2d()
-
-            tUnit = t / np.linalg.norm(t)
-            if not np.logical_and.reduce((np.abs(tUnit) < 0.2) | (np.abs(tUnit) > 0.9))[0] and tUnit[2, 0] < 0:
-                self.estimatedPoses.append(self.estimatedPoses[-1])
-            else:
-                self.estimatedPoses.append(self.estimatedPoses[-1]
-                                           @ np.linalg.inv(np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))))
-
-                self.prevFrameCnt = self.currFrameCnt
-                self.prevPrevFrame = self.prevFrame
-                self.prevFrame = self.currFrame
-
-            self.currFrameCnt += 1
-
-            if self.plotProgress:
-                self.plotter.updatePlot(self.currFrame, self.currFrameKeypoints)
-
-        if self.plotProgress:
-            self.plotter.plotResult()
-
-        return np.array(self.estimatedPoses), self.groundTruthPoses
 
 
     def getRelativeScale(self, R, t):
@@ -243,3 +211,62 @@ class VisualOdometry:
         A = np.linalg.inv(np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))) @ self.estimatedPoses[-1]
 
         return A[0:3, 0:3], A[0:3, 3].reshape((3, 1))
+
+
+    def run(self, firstFrameCnt=0, lastFrameCnt=None, useGroundTruthScale=True, motionEstimation='2d-2d'):
+        if motionEstimation.lower() == '2dto2d' or motionEstimation.lower() == '3dto2d':
+            motionEstimation = motionEstimation.lower().replace('to', '-')
+
+        if motionEstimation != '2d-2d' and motionEstimation != '3d-2d':
+            raise ValueError("Invalid motion estimation select variable")
+
+        if lastFrameCnt is None:
+            lastFrameCnt = self.kittiLoader.getNumberOfFrames()
+
+        self.prevFrameCnt = firstFrameCnt
+        self.currFrameCnt = self.prevFrameCnt + 1
+        self.estimatedPoses.append(self.groundTruthPoses[firstFrameCnt])
+        self.prevFrame = self.kittiLoader.getFrame(firstFrameCnt)
+
+        if self.plotProgress:
+            self.plotter.setupPlot()
+
+        avgFrameProcessTime = 0
+
+        while True:
+            if self.currFrameCnt == lastFrameCnt:
+                break
+
+            start = timer()
+
+            self.currFrame = self.kittiLoader.getFrame(self.currFrameCnt)
+
+            if motionEstimation.lower() == '2d-2d' or isinstance(self.prevPrevFrame, type(None)):
+                R, t = self.estimateMotion2dTo2d(useGroundTruthScale)
+            else:
+                R, t = self.estimateMotion3dTo2d()
+
+            tUnit = t / np.linalg.norm(t)
+            if not np.logical_and.reduce((np.abs(tUnit) < 0.2) | (np.abs(tUnit) > 0.9))[0]:
+                self.estimatedPoses.append(self.estimatedPoses[-1])
+            else:
+                self.estimatedPoses.append(self.estimatedPoses[-1]
+                                           @ np.linalg.inv(np.vstack((np.hstack((R, t)), np.array([0, 0, 0, 1])))))
+
+                self.prevFrameCnt = self.currFrameCnt
+                self.prevPrevFrame = self.prevFrame
+                self.prevFrame = self.currFrame
+
+            self.currFrameCnt += 1
+
+            avgFrameProcessTime += timer() - start
+
+            if self.plotProgress:
+                self.plotter.updatePlot(self.currFrame, self.currFrameKeypoints)
+
+        if self.plotProgress:
+            self.plotter.plotResult()
+
+        avgFrameProcessTime /= (lastFrameCnt - firstFrameCnt)
+
+        return np.array(self.estimatedPoses), self.groundTruthPoses, avgFrameProcessTime

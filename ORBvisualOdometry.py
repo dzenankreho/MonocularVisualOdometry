@@ -117,7 +117,6 @@
 
 
 from VisualOdometry import VisualOdometry
-from Plotter import Plotter
 
 sequences = {
     0: r"D:\Fakultet\Drugi ciklus\Prva godina\Drugi semestar\Robotska vizija\Seminarski\KITTI Dataset\00",
@@ -134,9 +133,14 @@ sequences = {
 }
 
 
-VO = VisualOdometry(sequences[0], True)
-estimatedPoses, groundTruthPoses = VO.run(motionEstimation='3dto2D')
-Plotter.plotResult()
+VO = VisualOdometry(sequences[3], matcher='flann', plotProgress=True)
+estimatedPoses, groundTruthPoses, avgFrameProcessTime = VO.run(0, 100)
+print(avgFrameProcessTime)
+
+VO = VisualOdometry(sequences[3], matcher='flann', plotProgress=False)
+estimatedPoses, groundTruthPoses, avgFrameProcessTime = VO.run(0, 100)
+print(avgFrameProcessTime)
+
 
 exit(0)
 
