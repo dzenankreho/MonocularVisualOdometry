@@ -7,8 +7,20 @@ from timeit import default_timer as timer
 
 
 class VisualOdometry:
+    """Monocular visual odometry using ORB features
+    """
+
     def __init__(self, sequenceLocation, numOfFeatures=500, frameSplitParts=(3, 2),
                  matcher='bf', plotProgress=False):
+        """Initializes the instance with the algorithm configurations and preferences
+
+        Args:
+            sequenceLocation (string): Path to the folder of the KITTI sequence
+            numOfFeatures (int): Number of features to be detected per subimage
+            frameSplitParts (tuple): Number of parts into which to split the image in width and height
+            matcher (string): Matcher to be used ('bf' for brute-force or 'flann' for FLANN)
+            plotProgress (bool): Indicates whether to plot the progress
+        """
         self.plotProgress = plotProgress
         self.kittiLoader = KITTISequenceLoader(sequenceLocation)
         self.groundTruthPoses = self.kittiLoader.getAllGroundTruthPoses()
@@ -47,6 +59,13 @@ class VisualOdometry:
 
 
     def splitImages(self, *images):
+        """Splits the given images into parts using the defined grid
+
+        Args:
+            *images: Images to be split into parts
+
+        Returns: An array containing the subimages for each image, and an array containing the location of the subimages in original image
+        """
         imageHeight = np.shape(images[0])[0]
         imageWidth = np.shape(images[0])[1]
         imagesVec = []
@@ -67,6 +86,15 @@ class VisualOdometry:
 
 
     def findFeatureMatches2Frames(self, image1, image2):
+        """Detects and matches features between two images
+
+        Args:
+            image1 (ndarray): First image
+            image2 (ndarray): Second image
+
+        Returns:
+            Arrays containing the locations of the matched features in each image
+        """
         matchedKeypoints1 = []
         matchedKeypoints2 = []
 
@@ -91,6 +119,16 @@ class VisualOdometry:
 
 
     def findFeatureMatches3Frames(self, image1, image2, image3):
+        """Detects and matches features between three images
+
+        Args:
+            image1 (ndarray): First image
+            image2 (ndarray): Second image
+            image3 (ndarray): Third image
+
+        Returns:
+            Arrays containing the locations of the matched features in each image
+        """
         matchedKeypoints1 = []
         matchedKeypoints2 = []
         matchedKeypoints3 = []
@@ -123,6 +161,15 @@ class VisualOdometry:
 
 
     def getRelativeScale(self, R, t):
+        """Computes the relative scaling factor for the newly computed pose
+
+        Args:
+            R (ndarray): Relative rotation matrix between the previous and current poses
+            t (ndarray): Relative translation vector between the previous and current poses
+
+        Returns:
+            Relative scaling factor
+        """
         matchedKeypoints1, matchedKeypoints2, matchedKeypoints3 = \
             self.findFeatureMatches3Frames(self.prevPrevFrame, self.prevFrame, self.currFrame)
 
@@ -169,6 +216,14 @@ class VisualOdometry:
 
 
     def estimateMotion2dTo2d(self, useGroundTruthScale):
+        """Computes the relative rotation matrix and translation vector from 2D-2D correspondences
+
+        Args:
+            useGroundTruthScale (bool): Indicates whether to calculate or use the ground truth relative scale
+
+        Returns:
+            Relative rotation matrix and the relative translation vector
+        """
         matchedKeypoints1, matchedKeypoints2 = self.findFeatureMatches2Frames(self.prevFrame, self.currFrame)
         self.currFrameKeypoints = matchedKeypoints2
 
@@ -188,6 +243,11 @@ class VisualOdometry:
 
 
     def estimateMotion3dTo2d(self):
+        """Computes the relative rotation matrix and translation vector from 3D-2D correspondences
+
+        Returns:
+            Relative rotation matrix and the relative translation vector
+        """
         matchedKeypoints1, matchedKeypoints2, matchedKeypoints3 = \
             self.findFeatureMatches3Frames(self.prevPrevFrame, self.prevFrame, self.currFrame)
         self.currFrameKeypoints = matchedKeypoints3
@@ -214,6 +274,17 @@ class VisualOdometry:
 
 
     def run(self, firstFrameCnt=0, lastFrameCnt=None, useGroundTruthScale=True, motionEstimation='2d-2d'):
+        """Starts the monocular visual odometry
+
+        Args:
+            firstFrameCnt (int): Number of the frame from which to start the visual odometry
+            lastFrameCnt (int): Number of the frame on which to end the visual odometry
+            useGroundTruthScale (bool): Indicates whether to use relative ground truth scale when estimating motion from 2D-2D correspondences
+            motionEstimation (string): Indicates what motion estimation method to use ('2d-2d' for 2D-2D or '3d-2d' for 3D-2D)
+
+        Returns:
+            Estimated trajectory (poses), ground truth trajectory (poses) and the average processing time of a frame
+        """
         if motionEstimation.lower() == '2dto2d' or motionEstimation.lower() == '3dto2d':
             motionEstimation = motionEstimation.lower().replace('to', '-')
 

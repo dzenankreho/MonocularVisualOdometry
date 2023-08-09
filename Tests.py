@@ -10,6 +10,7 @@ for i in range(11):
     sequences[i] = kittiLocation + str(i).zfill(2)
 
 
+# Testing different image grids using the FLANN matcher
 VO = VisualOdometry(sequences[9], numOfFeatures=3000, frameSplitParts=(1, 1), matcher='flann')
 estimatedPoses_1x1_3000_Flann, groundTruthPoses, avgFrameProcessTime_1x1_3000_Flann \
     = VO.run(firstFrameCnt=0, lastFrameCnt=1100)
@@ -34,6 +35,7 @@ plt.title(r"Trajectories with FLANN matcher", wrap=True)
 plt.legend([r"Ground truth", r"1x1 3000", r"2x1 1500", r"2x2 750", r"3x2 500"])
 
 
+# Testing different image grids using the Brute-Force matcher
 VO = VisualOdometry(sequences[9], numOfFeatures=3000, frameSplitParts=(1, 1), matcher='bf')
 estimatedPoses_1x1_3000_BF, groundTruthPoses, avgFrameProcessTime_1x1_3000_BF \
     = VO.run(firstFrameCnt=0, lastFrameCnt=1100)
@@ -68,6 +70,7 @@ print("\tBrute-Force 2x2 750:", avgFrameProcessTime_2x2_750_BF)
 print("\tBrute-Force 3x2 500:", avgFrameProcessTime_3x2_500_BF)
 
 
+# Testing all 11 KITTI sequences using the Brute-Force matcher with 3x2 image grid
 for i in range(11):
     VO = VisualOdometry(sequences[i])
     estimatedPoses, groundTruthPoses, _ = VO.run()

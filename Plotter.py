@@ -4,7 +4,16 @@ import cv2 as cv
 
 
 class Plotter:
+    """Plotter for showing progress and results of visual odometry
+    """
+
     def __init__(self, groundTruthPoses, estimatedPoses):
+        """Initializes the instance with lists of ground truth and estimated poses
+
+        Args:
+            groundTruthPoses (list): List of all ground truth poses
+            estimatedPoses (list): List containing only the initial pose
+        """
         self.groundTruthPoses = groundTruthPoses
         self.estimatedPoses = estimatedPoses
         self.figure = None
@@ -16,12 +25,20 @@ class Plotter:
 
 
     def setupPlot(self):
+        """Creates a figure for plotting progress (must be called before updatePlot)
+        """
         self.figure = plt.figure()
         plt.pause(0.2)
         self.figure.canvas.mpl_connect('close_event', self.onClose)
 
 
     def updatePlot(self, frame, keypoints):
+        """Updates the progress figure with current frame and matched features
+
+        Args:
+            frame (ndarray): Current frame in grayscale
+            keypoints (ndarray): Locations of matched features in pixels
+        """
         if self.closed:
             return
 
@@ -44,6 +61,8 @@ class Plotter:
 
 
     def plotResult(self):
+        """ Plots the final trajectory
+        """
         plt.close(self.figure)
         plt.figure()
         plt.plot(self.groundTruthPoses[:, 0, 3], self.groundTruthPoses[:, 2, 3], 'r',
