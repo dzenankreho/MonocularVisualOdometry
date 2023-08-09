@@ -1,8 +1,11 @@
 # Monocular Visual Odometry
 Monocular visual odometry using ORB implemented in Python with OpenCV
 
-<p align="center">  
-<img src="PartOfSeq00SpeedUp.gif" width=600/><br>Speed up demonstration on the 00 KITTI sequence
+<p align="center">
+<video width=600 height=450 autoplay loop muted>
+<source src="PartOfSeq00SpeedUp.mp4" type="video/mp4">
+</video>
+<br>Sped up demonstration on the 00 KITTI sequence
 </p>
 
 This application/project was developed as a part of the graduate elective course "Robot Vision", which is part of the Automatic control and electronics Master's degree program offered by the Faculty of Electrical Engineering, University of Sarajevo.
